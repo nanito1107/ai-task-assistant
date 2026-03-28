@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Dependencias del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar dependencias — versiones compatibles entre sí
+RUN pip install --no-cache-dir \
+    "faster-whisper==0.10.1" \
+    "fastapi==0.111.0" \
+    "uvicorn[standard]==0.29.0" \
+    "python-multipart==0.0.9"
+
+COPY app.py .
+
+EXPOSE 9000
+
+# Healthcheck interno al contenedor
+HEALTHCHECK --interval=20s --timeout=10s --start-period=300s --retries=5 \
+    CMD curl -sf http://localhost:9000/health || exit 1
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9000"]

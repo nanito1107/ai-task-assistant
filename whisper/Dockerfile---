@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "faster-whisper==0.10.1" \
+    "fastapi==0.111.0" \
+    "uvicorn[standard]==0.29.0" \
+    "python-multipart==0.0.9" \
+    "requests==2.31.0"
+
+COPY app.py .
+
+EXPOSE 9000
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9000"]

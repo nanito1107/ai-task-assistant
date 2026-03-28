@@ -1,0 +1,20 @@
+apiVersion: 1
+
+datasources:
+  - name: PostgreSQL
+    type: postgres
+    uid: postgres-tasks
+    url: postgres:5432
+    user: taskuser
+    secureJsonData:
+      password: "Avigilon2020."
+    jsonData:
+      database: taskdb
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false
+    isDefault: true
+    editable: true

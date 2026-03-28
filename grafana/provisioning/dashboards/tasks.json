@@ -1,0 +1,92 @@
+{
+  "title": "AI Task Assistant",
+  "uid": "ai-task-dashboard",
+  "version": 2,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "type": "stat", "title": "Tareas Pendientes",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{ "rawSql": "SELECT COUNT(*) FROM tasks WHERE status='pending'", "format": "table" }],
+      "options": { "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "orange", "value": null }] } } }
+    },
+    {
+      "id": 2, "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "type": "stat", "title": "Tareas Completadas",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{ "rawSql": "SELECT COUNT(*) FROM tasks WHERE status='completed'", "format": "table" }],
+      "options": { "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "id": 3, "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "type": "stat", "title": "Eventos en Calendario",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{ "rawSql": "SELECT COUNT(*) FROM calendar_events WHERE status='created'", "format": "table" }],
+      "options": { "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": null }] } } }
+    },
+    {
+      "id": 4, "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "type": "stat", "title": "Urgentes Activas",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{ "rawSql": "SELECT COUNT(*) FROM tasks WHERE priority='urgent' AND status NOT IN ('completed','cancelled')", "format": "table" }],
+      "options": { "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "red", "value": null }] } } }
+    },
+    {
+      "id": 5, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "type": "piechart", "title": "Tareas por Estado",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{ "rawSql": "SELECT status AS metric, COUNT(*) AS value FROM tasks GROUP BY status ORDER BY value DESC", "format": "table" }],
+      "options": { "pieType": "donut", "legendDisplayMode": "table" }
+    },
+    {
+      "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "type": "piechart", "title": "Tareas por Prioridad",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{ "rawSql": "SELECT priority AS metric, COUNT(*) AS value FROM tasks WHERE status NOT IN ('completed','cancelled') GROUP BY priority", "format": "table" }],
+      "options": { "pieType": "pie" }
+    },
+    {
+      "id": 7, "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "type": "timeseries", "title": "Actividad por Día (Tareas + Eventos)",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [
+        {
+          "rawSql": "SELECT DATE_TRUNC('day', created_at) AS time, COUNT(*) AS value FROM tasks WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "legendFormat": "Tareas"
+        },
+        {
+          "rawSql": "SELECT DATE_TRUNC('day', created_at) AS time, COUNT(*) AS value FROM calendar_events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "legendFormat": "Eventos"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 20 } } }
+    },
+    {
+      "id": 8, "gridPos": { "h": 10, "w": 12, "x": 0, "y": 20 },
+      "type": "table", "title": "Tareas Pendientes",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{
+        "rawSql": "SELECT title, priority, status, created_at FROM tasks WHERE status IN ('pending','in_progress') ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at DESC LIMIT 15",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 9, "gridPos": { "h": 10, "w": 12, "x": 12, "y": 20 },
+      "type": "table", "title": "Próximos Eventos del Calendario",
+      "datasource": { "type": "postgres", "uid": "postgres-tasks" },
+      "targets": [{
+        "rawSql": "SELECT title, start_datetime, status FROM calendar_events WHERE status='created' ORDER BY start_datetime ASC LIMIT 15",
+        "format": "table"
+      }]
+    }
+  ]
+}

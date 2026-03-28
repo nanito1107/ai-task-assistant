@@ -1,0 +1,18 @@
+# Variables de entorno — NUNCA subir
+.env
+
+# Credenciales Google
+backend/credentials.json
+backend/token.json
+
+# Datos de Docker
+postgres_data/
+grafana_data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log

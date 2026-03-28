@@ -1,0 +1,201 @@
+# ============================================================
+#  AI Task Assistant - QNAP / Container Station
+# ============================================================
+
+networks:
+  ai-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ollama_models:
+  grafana_data:
+  redis_data:
+  whisper_models:
+  zerotier_data:
+
+services:
+
+  # ----------------------------------------------------------
+  # 1. BASE DE DATOS - PostgreSQL
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taskuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskpass123}
+      POSTGRES_DB: ${POSTGRES_DB:-taskdb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ai-net
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskuser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # 2. CACHE / COLA DE MENSAJES - Redis
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ai_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass123}
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-net
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-redispass123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # 3. IA LOCAL - Ollama (LLM)
+  # ----------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai_ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - ai-net
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+
+  # ----------------------------------------------------------
+  # 4. TRANSCRIPCION DE AUDIO - Faster-Whisper
+  # ----------------------------------------------------------
+  whisper:
+    build:
+      context: ./whisper
+      dockerfile: Dockerfile
+    container_name: ai_whisper
+    restart: unless-stopped
+    volumes:
+      - whisper_models:/app/models
+    networks:
+      - ai-net
+    ports:
+      - "9000:9000"
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-es}
+
+  # ----------------------------------------------------------
+  # 5. BACKEND + BOT DE TELEGRAM - FastAPI
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      whisper:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-taskuser}:${POSTGRES_PASSWORD:-taskpass123}@postgres:5432/${POSTGRES_DB:-taskdb}?ssl=disable
+      - DATABASE_SYNC_URL=postgresql://${POSTGRES_USER:-taskuser}:${POSTGRES_PASSWORD:-taskpass123}@postgres:5432/${POSTGRES_DB:-taskdb}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - OLLAMA_URL=http://ollama:11434
+      - WHISPER_URL=http://whisper:9000
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - APP_SECRET_KEY=${APP_SECRET_KEY:-changeme-super-secret-key}
+      - TZ=America/Santiago
+    volumes:
+      - ./backend:/app
+    networks:
+      - ai-net
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # 6. DASHBOARD - Grafana
+  # ----------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ai_grafana
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_SERVER_ROOT_URL=http://0.0.0.0:3000
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SMTP_ENABLED=false
+      - TZ=America/Santiago
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - ai-net
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # 7. PROXY REVERSO - Nginx
+  # ----------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: ai_nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - grafana
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - ai-net
+    ports:
+      - "80:80"
+
+  # ----------------------------------------------------------
+  # 8. VPN - ZeroTier (solo para esta app)
+  # ----------------------------------------------------------
+#  zerotier:
+ #   image: zerotier/zerotier:latest
+  #  container_name: ai_zerotier
+#    restart: unless-stopped
+#    network_mode: host
+#    cap_add:
+#      - NET_ADMIN
+#      - SYS_ADMIN
+#    devices:
+#      - /dev/net/tun:/dev/net/tun
+#    volumes:
+#      - zerotier_data:/var/lib/zerotier-one
