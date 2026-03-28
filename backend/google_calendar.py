@@ -154,17 +154,32 @@ async def create_event(
     if not end_dt:
         end_dt = start_dt + timedelta(hours=1)
 
+    # Asegurar que end > start (evita timeRangeEmpty en Google Calendar)
+    if end_dt <= start_dt:
+        end_dt = start_dt + timedelta(hours=1)
+
+    # Formatear con offset de timezone de Santiago (-03:00 o -04:00 segun DST)
+    import pytz
+    tz = pytz.timezone("America/Santiago")
+
+    def to_tz_str(dt):
+        if dt.tzinfo is None:
+            dt = tz.localize(dt)
+        else:
+            dt = dt.astimezone(tz)
+        return dt.isoformat()
+
     service = build("calendar", "v3", credentials=creds)
 
     event_body = {
         "summary":     title,
         "description": description or "",
         "start": {
-            "dateTime": start_dt.isoformat(),
+            "dateTime": to_tz_str(start_dt),
             "timeZone": "America/Santiago",
         },
         "end": {
-            "dateTime": end_dt.isoformat(),
+            "dateTime": to_tz_str(end_dt),
             "timeZone": "America/Santiago",
         },
         "reminders": {
